@@ -10,7 +10,6 @@ sslmode = "disable"
 
 [weather]
 weather_api_url = "http://api.weatherapi.com/v1/current.json"
-weather_api_key = "33750a4300aa478e8e3103625252801"
 weather_refresh_time = 10
 
 [server]
