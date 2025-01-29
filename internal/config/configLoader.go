@@ -68,6 +68,8 @@ func NewLoader(opts Options) *Loader {
 
 // Load reads environment-specific configurations and defaults, and unmarshals them into the config interface.
 func (c *Loader) Load(env string, mode string, config interface{}) error {
+	fmt.Println("Environment Variable:", os.Getenv("WEATHER_API_KEY"))
+
 	// Load the default file then override it with the env-specific file
 	err := c.loadByConfigName(c.opts.defaultConfigFileName, config)
 	if err != nil {
@@ -102,5 +104,6 @@ func (c *Loader) loadByConfigName(configName string, config interface{}) error {
 	if err := c.viper.ReadInConfig(); err != nil {
 		return err
 	}
+
 	return c.viper.Unmarshal(config)
 }

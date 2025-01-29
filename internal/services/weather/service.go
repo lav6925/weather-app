@@ -15,6 +15,7 @@ import (
 	"weather-app/internal/config"
 	database "weather-app/internal/database"
 	model "weather-app/internal/entities/weather-app"
+	"weather-app/internal/env"
 	"weather-app/rpc/proto"
 
 	"gorm.io/gorm"
@@ -28,7 +29,7 @@ type WeatherServiceServerImpl struct {
 
 // fetchExternalWeather fetches weather data from an external API
 func fetchExternalWeather(city string, appConfig config.Config) (*proto.GetWeatherResponse, error) {
-	url := fmt.Sprintf("%s?key=%s&q=%s", appConfig.Weather.APIURL, appConfig.Weather.APIKey, url.QueryEscape(city))
+	url := fmt.Sprintf("%s?key=%s&q=%s", appConfig.Weather.APIURL, env.GetWeatherAPIKey(), url.QueryEscape(city))
 	fmt.Println("url formed is: ", url)
 	resp, err := http.Get(url)
 	if err != nil {
