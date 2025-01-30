@@ -14,3 +14,4 @@ weather_refresh_time = 10
 
 [server]
 port = 9602
+httpPort = 9603

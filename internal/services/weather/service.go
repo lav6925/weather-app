@@ -74,6 +74,94 @@ func fetchExternalWeather(city string, appConfig config.Config) (*proto.GetWeath
 		City:        strings.ToUpper(result.Location.Name),
 		Description: result.Current.Condition.Text,
 		Temperature: float32(result.Current.TempC),
+		Timestamp:   time.Now().Format(time.RFC3339),
+	}, nil
+}
+
+func (s *WeatherServiceServerImpl) DeleteWeather(ctx context.Context, req *proto.DeleteWeatherRequest) (*proto.DeleteWeatherResponse, error) {
+	city := strings.ToUpper(req.GetCity())
+
+	//delete entry from DB
+	err := database.DB.Where("city = ?", city).Delete(&model.Weather{}).Error
+	if err != nil {
+		log.Printf("\nFailed to delete weather data in DB: %v", err)
+		return nil, fmt.Errorf("failed to delete weather data in DB: %w", err)
+	}
+
+	return &proto.DeleteWeatherResponse{
+		Message: "Success",
+	}, nil
+}
+
+// Create whether let's you create whether in DB
+func (s *WeatherServiceServerImpl) CreateWeather(ctx context.Context, req *proto.CreateWeatherRequest) (*proto.CreateWeatherResponse, error) {
+	city := strings.ToUpper(req.GetCity())
+	description := req.GetDescription()
+	temperature := req.GetTemperature()
+
+	if city == "" || temperature == 0 {
+		return nil, fmt.Errorf("city or temperature cannot be empty")
+	}
+
+	//create new  weather row
+	var weather model.Weather = model.Weather{
+		City:        city,
+		Description: description,
+		Temperature: temperature,
+		Timestamp:   time.Now(),
+	}
+
+	// insert row
+	err := database.DB.Create(&weather).Error
+	if err != nil {
+		log.Printf("\nFailed to create weather data in DB: %v", err)
+		return nil, fmt.Errorf("failed to create weather data in DB: %w", err)
+	}
+
+	return &proto.CreateWeatherResponse{
+		City:        weather.City,
+		Description: weather.Description,
+		Temperature: weather.Temperature,
+		Timestamp:   weather.Timestamp.Format(time.RFC3339),
+	}, nil
+
+}
+
+// Create whether let's you update whether in DB
+func (s *WeatherServiceServerImpl) UpdateWeather(ctx context.Context, req *proto.UpdateWeatherRequest) (*proto.UpdateWeatherResponse, error) {
+	city := strings.ToUpper(req.GetCity())
+	description := req.GetDescription()
+	temperature := req.GetTemperature()
+	var weather model.Weather
+
+	// Query the record
+	err := database.DB.Where("city = ?", city).Order("timestamp DESC").First(&weather).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// Return an error if no record is found
+			return nil, fmt.Errorf("entry not found to update for city: %s", city)
+		}
+		log.Printf("\nFailed to retrieve weather data from DB: %v", err)
+		return nil, fmt.Errorf("failed to retrieve weather data from DB: %w", err)
+	}
+
+	// Update the record
+	weather.Description = description
+	weather.Temperature = temperature
+	weather.Timestamp = time.Now()
+
+	// Save the updated record
+	err = database.DB.Save(&weather).Error
+	if err != nil {
+		log.Printf("\nFailed to update weather data in DB: %v", err)
+		return nil, fmt.Errorf("failed to update weather data in DB: %w", err)
+	}
+
+	return &proto.UpdateWeatherResponse{
+		City:        weather.City,
+		Description: weather.Description,
+		Temperature: weather.Temperature,
+		Timestamp:   weather.Timestamp.Format(time.RFC3339),
 	}, nil
 }
 
@@ -105,7 +193,7 @@ func (s *WeatherServiceServerImpl) GetWeather(ctx context.Context, req *proto.Ge
 				City:        weather.City,
 				Description: weather.Description,
 				Temperature: weather.Temperature,
-				Timestamp:   time.Now().Format(time.RFC3339),
+				Timestamp:   weather.Timestamp.Format(time.RFC3339),
 			}, nil
 		}
 	}
@@ -135,5 +223,3 @@ func (s *WeatherServiceServerImpl) GetWeather(ctx context.Context, req *proto.Ge
 	// Return the newly fetched data
 	return externalWeather, nil
 }
-
-// Other CRUD methods: CreateWeather, UpdateWeather, DeleteWeather...

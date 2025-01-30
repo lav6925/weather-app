@@ -36,7 +36,7 @@ clean:
 
 # Refresh protobuf-generated code
 proto-refresh:
-	protoc --go_out=. --go-grpc_out=. proto/weather.proto
+	protoc -I=proto -I=proto/google/api --go_out=. --go-grpc_out=.  --grpc-gateway_out=. proto/weather/weather.proto
 
 # Format the Go code
 fmt:

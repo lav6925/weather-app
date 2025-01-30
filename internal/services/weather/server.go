@@ -1,87 +1,103 @@
 package weather
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"weather-app/internal/config"
-	"weather-app/internal/database"
+	database "weather-app/internal/database"
 	"weather-app/rpc/proto"
 
-	"github.com/gorilla/mux"
+	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
-func StartServer() {
-	// Step 1: Load configuration
-	loader := config.NewDefaultLoader()
+type Server struct {
+	config config.Config
+}
+
+func NewServer() (*Server, error) {
 	var appConfig config.Config
-	err := loader.Load("default", "dev", &appConfig)
+	if err := config.NewDefaultLoader().Load("default", "dev", &appConfig); err != nil {
+		return nil, fmt.Errorf("failed to load config: %v", err)
+	}
+
+	return &Server{
+		config: appConfig,
+	}, nil
+}
+
+func (s *Server) setupGRPCServer() (*grpc.Server, net.Listener, error) {
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", s.config.Server.Port))
 	if err != nil {
-		log.Fatalf("Error loading config: %v", err)
+		return nil, nil, fmt.Errorf("failed to create listener: %v", err)
 	}
 
-	// Step 2: Initialize the database using the loaded config
-	database.InitDB(appConfig)
-
-	// Step 3: Initialize WeatherServiceServer
-	service := &WeatherServiceServerImpl{
-		Config: appConfig, // Passing the config to the service
-	}
-
-	// Initialize the gRPC server
 	grpcServer := grpc.NewServer()
+	proto.RegisterWeatherServiceServer(grpcServer, &WeatherServiceServerImpl{Config: s.config})
 
-	// Register the service with the gRPC server
-	proto.RegisterWeatherServiceServer(grpcServer, service)
+	return grpcServer, listener, nil
+}
 
-	// Set up a listener
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", appConfig.Server.Port))
-	if err != nil {
-		log.Fatalf("Failed to start TCP listener: %v", err)
+func (s *Server) setupGatewayHandler(ctx context.Context) (http.Handler, error) {
+	gwmux := runtime.NewServeMux(
+		runtime.WithErrorHandler(runtime.DefaultHTTPErrorHandler),
+	)
+
+	opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
+	endpoint := fmt.Sprintf("localhost:%d", s.config.Server.Port)
+
+	if err := proto.RegisterWeatherServiceHandlerFromEndpoint(ctx, gwmux, endpoint, opts); err != nil {
+		return nil, fmt.Errorf("failed to register gateway: %v", err)
 	}
 
-	// Run the gRPC server in a goroutine
-	go func() {
-		log.Printf("Starting gRPC server on port %d...\n", appConfig.Server.Port)
-		if err := grpcServer.Serve(listener); err != nil {
-			log.Fatalf("Failed to start gRPC server: %v", err)
-		}
-	}()
+	return gwmux, nil
+}
 
-	// Set up HTTP routing using Gorilla Mux
-	router := mux.NewRouter()
-	router.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
-	})
+func (s *Server) startGRPCServer(grpcServer *grpc.Server, listener net.Listener) {
+	log.Printf("Starting gRPC server on port %d...", s.config.Server.Port)
+	if err := grpcServer.Serve(listener); err != nil {
+		log.Fatalf("Failed to start gRPC server: %v", err)
+	}
+}
 
-	// HTTP handler to call GetWeather from the gRPC service
-	router.HandleFunc("/weather", func(w http.ResponseWriter, r *http.Request) {
-		// Extract city parameter from query string
-		city := r.URL.Query().Get("city")
-		if city == "" {
-			http.Error(w, "City parameter is required", http.StatusBadRequest)
-			return
-		}
+func (s *Server) startHTTPServer(handler http.Handler) error {
+	log.Printf("Starting HTTP server on port %d...", s.config.Server.HTTPPort)
+	return http.ListenAndServe(fmt.Sprintf(":%d", s.config.Server.HTTPPort), handler)
+}
 
-		// Call the GetWeather gRPC method
-		req := &proto.GetWeatherRequest{City: city}
-		resp, err := service.GetWeather(r.Context(), req)
-		if err != nil {
-			http.Error(w, fmt.Sprintf("Failed to get weather: %v", err), http.StatusInternalServerError)
-			return
-		}
+func (s *Server) initDatabase() error {
+	return database.InitDB(s.config)
+}
 
-		// Return the response as JSON (you can format this according to your needs)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, `{"city": "%s", "description": "%s", "temperature": %.2f}`,
-			resp.GetCity(), resp.GetDescription(), resp.GetTemperature())
-	}).Methods("GET")
+func (s *Server) Start() error {
+	if err := s.initDatabase(); err != nil {
+		return fmt.Errorf("failed to initialize database: %v", err)
+	}
 
-	// Start the HTTP server
-	log.Println("Starting HTTP server on port 9603...")
-	log.Fatal(http.ListenAndServe(":9603", router))
+	grpcServer, listener, err := s.setupGRPCServer()
+	if err != nil {
+		return fmt.Errorf("failed to setup gRPC server: %v", err)
+	}
+
+	ctx := context.Background()
+	handler, err := s.setupGatewayHandler(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to setup gateway handler: %v", err)
+	}
+
+	go s.startGRPCServer(grpcServer, listener)
+	return s.startHTTPServer(handler)
+}
+
+func StartServer() error {
+	server, err := NewServer()
+	if err != nil {
+		return fmt.Errorf("failed to create server: %v", err)
+	}
+
+	return server.Start()
 }

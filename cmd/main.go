@@ -1,10 +1,12 @@
 package main
 
 import (
-	"weather-app/internal/services/weather" // Import the weather package
+	"log"
+	"weather-app/internal/services/weather"
 )
 
 func main() {
-	// Initialize the server or other components
-	weather.StartServer()
+	if err := weather.StartServer(); err != nil {
+		log.Fatalf("Failed to start server: %v", err)
+	}
 }

@@ -18,6 +18,7 @@ type Config struct {
 	} `mapstructure:"weather"`
 
 	Server struct {
-		Port int `mapstructure:"port"`
+		Port     int `mapstructure:"port"`
+		HTTPPort int `mapstructure:"httpPort"`
 	} `mapstructure:"server"`
 }
