@@ -6,8 +6,10 @@ import (
 	"log"
 	"net"
 	"net/http"
+
 	"weather-app/internal/config"
 	database "weather-app/internal/database"
+	entities "weather-app/internal/entities/weather-app"
 	"weather-app/rpc/proto"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
@@ -15,13 +17,19 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
+// WeatherServiceServerImpl implements the WeatherServiceServer interface
+type WeatherServiceServerImpl struct {
+	proto.UnimplementedWeatherServiceServer
+	Config config.Config
+}
+
 type Server struct {
 	config config.Config
 }
 
 func NewServer() (*Server, error) {
 	var appConfig config.Config
-	if err := config.NewDefaultLoader().Load("default", "dev", &appConfig); err != nil {
+	if err := config.LoadConfig(&appConfig); err != nil {
 		return nil, fmt.Errorf("failed to load config: %v", err)
 	}
 
@@ -73,9 +81,24 @@ func (s *Server) initDatabase() error {
 	return database.InitDB(s.config)
 }
 
+func (s *Server) autoMigrate() error {
+	// AutoMigrate table weather
+	log.Println("Running migration..")
+	err := database.DB.AutoMigrate(&entities.Weather{})
+	if err != nil {
+		return err
+	}
+	log.Println("Database migration completed.")
+	return nil
+}
+
 func (s *Server) Start() error {
 	if err := s.initDatabase(); err != nil {
 		return fmt.Errorf("failed to initialize database: %v", err)
+	}
+
+	if err := s.autoMigrate(); err != nil {
+		return fmt.Errorf("failed to migrate database: %v", err)
 	}
 
 	grpcServer, listener, err := s.setupGRPCServer()
