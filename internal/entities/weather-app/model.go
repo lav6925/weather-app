@@ -1,12 +1,26 @@
 package entities
 
 import (
-	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
+	er "weather-app/internal/utils"
 	"weather-app/rpc/proto"
 )
+
+type WeatherAPIResponse struct {
+	Location struct {
+		Name      string `json:"name"`
+		Localtime string `json:"localtime"`
+	} `json:"location"`
+	Current struct {
+		TempC     float64 `json:"temp_c"`
+		Condition struct {
+			Text string `json:"text"`
+		} `json:"condition"`
+	} `json:"current"`
+}
 
 // Weather model (no DB dependencies)
 type Weather struct {
@@ -20,7 +34,7 @@ type Weather struct {
 func NewWeatherFromCity(city string) (Weather, error) {
 	city = strings.ToUpper(city)
 	if city == "" {
-		return Weather{}, fmt.Errorf("city cannot be empty")
+		return Weather{}, er.NewError(http.StatusBadRequest, "city cannot be empty")
 	}
 	return Weather{
 		City: city,
@@ -30,7 +44,7 @@ func NewWeatherFromCity(city string) (Weather, error) {
 func NewWeather(city, description string, temperature float32) (Weather, error) {
 	city = strings.ToUpper(city)
 	if city == "" {
-		return Weather{}, fmt.Errorf("city or temperature cannot be empty")
+		return Weather{}, er.NewError(http.StatusBadRequest, "city cannot be empty")
 	}
 	return Weather{
 		City:        city,

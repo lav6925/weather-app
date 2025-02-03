@@ -30,7 +30,7 @@ type Server struct {
 func NewServer() (*Server, error) {
 	var appConfig config.Config
 	if err := config.LoadConfig(&appConfig); err != nil {
-		return nil, fmt.Errorf("failed to load config: %v", err)
+		return nil, err
 	}
 
 	return &Server{
@@ -52,8 +52,7 @@ func (s *Server) setupGRPCServer() (*grpc.Server, net.Listener, error) {
 
 func (s *Server) setupGatewayHandler(ctx context.Context) (http.Handler, error) {
 	gwmux := runtime.NewServeMux(
-		runtime.WithErrorHandler(runtime.DefaultHTTPErrorHandler),
-	)
+		runtime.WithErrorHandler(runtime.DefaultHTTPErrorHandler))
 
 	opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
 	endpoint := fmt.Sprintf("localhost:%d", s.config.Server.Port)

@@ -3,6 +3,9 @@ package config
 import (
 	"fmt"
 	"log"
+	"net/http"
+
+	er "weather-app/internal/utils"
 
 	"github.com/spf13/viper"
 )
@@ -18,12 +21,12 @@ func LoadConfig(config interface{}) error {
 
 	// Read the config file
 	if err := v.ReadInConfig(); err != nil {
-		return fmt.Errorf("error loading config file: %w", err)
+		return er.NewError(http.StatusInternalServerError, fmt.Sprintf("error loading config file: %v", err))
 	}
 
 	// Unmarshal into the provided struct
 	if err := v.Unmarshal(config); err != nil {
-		return fmt.Errorf("error parsing config file: %w", err)
+		return er.NewError(http.StatusInternalServerError, fmt.Sprintf("error parsing config file: %v", err))
 	}
 
 	log.Printf("Config loaded from %s", DefaultConfigFile)

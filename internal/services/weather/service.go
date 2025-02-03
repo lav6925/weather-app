@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"strings"
 	"time"
 
@@ -12,6 +13,8 @@ import (
 	"weather-app/rpc/proto"
 
 	"weather-app/internal/repository"
+
+	er "weather-app/internal/utils"
 
 	"gorm.io/gorm"
 )
@@ -35,7 +38,7 @@ func (s *WeatherServiceServerImpl) CreateWeather(ctx context.Context, req *proto
 
 	_, queryDBErr := repository.FindWeatherByCity(weather.City)
 	if queryDBErr == nil {
-		return nil, fmt.Errorf("weather with city: %s already present", weather.City)
+		return nil, queryDBErr
 	}
 
 	if dbErr := repository.InsertWeather(&weather); dbErr != nil {
@@ -81,7 +84,7 @@ func (s *WeatherServiceServerImpl) GetWeather(ctx context.Context, req *proto.Ge
 	if queryDBErr != nil {
 		// if error is other than recordNotFound err then return
 		if !errors.Is(queryDBErr, gorm.ErrRecordNotFound) {
-			return nil, queryDBErr
+			return nil, er.NewError(http.StatusNotFound, fmt.Sprintf("entry not found for city: %s", city))
 		}
 	} else {
 		log.Printf("Weather data found: %+v", weather)
@@ -97,7 +100,7 @@ func (s *WeatherServiceServerImpl) GetWeather(ctx context.Context, req *proto.Ge
 	log.Printf("Weather data for %s is outdated or not found, fetching from external source...", city)
 	externalWeather, err := repository.FetchExternalWeather(city, s.Config)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch external weather: %w", err)
+		return nil, err
 	}
 
 	weather = entities.Weather{

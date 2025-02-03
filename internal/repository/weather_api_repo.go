@@ -3,51 +3,42 @@ package repository
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
 	"weather-app/internal/config"
+	entities "weather-app/internal/entities/weather-app"
 	"weather-app/internal/env"
+	errors "weather-app/internal/utils"
 	"weather-app/rpc/proto"
 )
 
 // FetchExternalWeather fetches weather data from an external API and validates the response.
 func FetchExternalWeather(city string, appConfig config.Config) (*proto.GetWeatherResponse, error) {
 	apiURL := fmt.Sprintf("%s?key=%s&q=%s", appConfig.Weather.APIURL, env.GetWeatherAPIKey(), url.QueryEscape(city))
-	log.Println("Fetching weather data from:", apiURL)
 
 	resp, err := http.Get(apiURL)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch external weather data: %w", err)
+		return nil, errors.NewError(http.StatusServiceUnavailable, "failed to fetch external weather data")
 	}
-	defer resp.Body.Close() // The underlying connection (socket) remains open if you don’t close it, which can lead to resource exhaustion (too many open connections).
+	defer resp.Body.Close()
 
+	// Check if the response status is not 200 OK
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected API response status: %d %s", resp.StatusCode, http.StatusText(resp.StatusCode))
+		return nil, errors.NewError(resp.StatusCode, fmt.Sprintf("unexpected API response: %d %s", resp.StatusCode, http.StatusText(resp.StatusCode)))
 	}
 
-	var result struct {
-		Location struct {
-			Name      string `json:"name"`
-			Localtime string `json:"localtime"`
-		} `json:"location"`
-		Current struct {
-			TempC     float64 `json:"temp_c"`
-			Condition struct {
-				Text string `json:"text"`
-			} `json:"condition"`
-		} `json:"current"`
-	}
-
+	// Decode JSON response
+	result := &entities.WeatherAPIResponse{}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("failed to decode response body: %w", err)
+		return nil, errors.NewError(http.StatusInternalServerError, "failed to decode response body")
 	}
 
+	// Validate the response data
 	if result.Location.Name == "" || result.Current.Condition.Text == "" {
-		return nil, fmt.Errorf("invalid API response: missing required weather data")
+		return nil, errors.NewError(http.StatusBadGateway, "invalid API response: missing required weather data")
 	}
 
 	return &proto.GetWeatherResponse{
